@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import uuid
+from numpy import source
 import requests
 from urllib.parse import urlparse
 from io import BytesIO
@@ -20,11 +21,33 @@ from azure.cognitiveservices.vision.face.models import TrainingStatusType, Perso
 KEY = config["KEY"]
 ENDPOINT = config["ENDPOINT"]
 
-# Create an authenticated FaceClient.
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
 
+
+imgTarget = open('/Users/aszampias/Documents/HeadHunter/KnownPeople/amanda.jpeg', 'rb') 
+imgTargetName = os.path.basename(imgTarget.name)
+arDetectedFaces1 = face_client.face.detect_with_stream(imgTarget, detection_model='detection_03')
+imgTargetFaceID = arDetectedFaces1[0].face_id
+#print(imgTargetFaceID)
+print('{} face(s) detected from image {}.'.format(len(arDetectedFaces1), imgTargetName))
+
+imgPossible = open('/Users/aszampias/Documents/HeadHunter/example.jpeg', 'rb') 
+imgPossibleName = os.path.basename(imgPossible.name)
+arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model='detection_03')
+print('{} face(s) detected from image {}.'.format(len(arPossibleDetectedFaces), imgPossibleName))
+
+
+for possibleDetectedFace in arPossibleDetectedFaces:
+  faceVerifyResults = face_client.face.verify_face_to_face(imgTargetFaceID, possibleDetectedFace.face_id)
+  #print(faceVerifyResults)
+  if (faceVerifyResults.is_identical == True):
+    print('Faces from {} & {} are of the same person, with confidence: {}'.format(imgTargetName, imgPossibleName, faceVerifyResults.confidence))
+  else: 
+    print('Faces from {} & {} are of a different person, with confidence: {}'.format(imgTargetName, imgPossibleName, faceVerifyResults.confidence))
+
+
 # Base url for the Verify and Facelist/Large Facelist operations
-IMAGE_BASE_URL = 'https://csdx.blob.core.windows.net/resources/Face/Images/'
+'''IMAGE_BASE_URL = 'https://csdx.blob.core.windows.net/resources/Face/Images/'
 
 # Create a list to hold the target photos of the same person
 target_image_file_names = ['Family1-Dad1.jpg', 'Family1-Dad2.jpg']
@@ -77,14 +100,14 @@ print('Faces from {} & {} are of the same person, with confidence: {}'
     if verify_result_diff.is_identical
     else 'Faces from {} & {} are of a different person, with confidence: {}'
         .format(source_image_file_name2, target_image_file_names[0], verify_result_diff.confidence))
-
+'''
 
 '''face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-img = cv2.imread('example.jpeg')
+img = cv2.imread('foo.png')
 
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-faces = face_cascade.detectMultiScale(gray, 1.5, 4)
+faces = face_cascade.detectMultiScale(gray, 1.4, 5)
 counter = 0
 for (x, y, w, h) in faces:
     cv2.rectangle(img, (x-30, y-30), (x+w+30, y+h+30), (255, 200, 0), 2)
