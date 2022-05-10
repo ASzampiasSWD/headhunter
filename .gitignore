@@ -1,0 +1,11 @@
+config.py
+Images/
+KnownPeople/
+.DS_Store
+output.txt
+example.jpeg
+example_0.jpeg
+example_1.jpeg
+example_2.jpeg
+example_3.jpeg
+example_4.jpeg
