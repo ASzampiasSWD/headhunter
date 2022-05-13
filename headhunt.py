@@ -1,122 +1,137 @@
 #!/usr/bin/python3
-import cv2
-import asyncio
-import io
-import glob
 import os
-import sys
 import time
-import uuid
-from numpy import source
-import requests
-from urllib.parse import urlparse
-from io import BytesIO
-from PIL import Image, ImageDraw
+import argparse
 from config import config
+from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
-from azure.cognitiveservices.vision.face.models import TrainingStatusType, Person, QualityForRecognition
 
 # Endpoint and Key located in config.py
 KEY = config["KEY"]
 ENDPOINT = config["ENDPOINT"]
+MAX_REQUEST_RATE_FREE = config["MAX_REQUEST_FREE_VERSION"]
+REQUEST_TIMEOUT_TIME = config["REQUEST_TIMEOUT_TIME"]
+accepted_extensions = ["jpg", "png", "jpeg", "bmp", "webp", "tiff", "tif"]
+global intRequestCounter
+intRequestCounter = 0
+global intTotalRequests
+intTotalRequests = 0
+global intFileIndex
+intFileIndex = 0
+imageCompareDir = os.path.join(os.getcwd(), 'Images')
 
+successFile = open('success.txt','a')
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
 
+parser = argparse.ArgumentParser(description='Find face matches from one image.')
+parser.add_argument('target_file', type=str,
+                    help='path of the image you want found')
+parser.add_argument('--detection-model', dest='detection_model', type=str,
+                    default='detection_03',
+                    help='detection model for Microsoft Azure. Default is detection_03')
+parser.add_argument('--paid', dest='paid_version', action="store_true",
+                    help='You have the paid version of Azure. This will turn off the time.sleep required for free version. FAST.')
+parser.add_argument('--max', dest='max_request_limit', type=int,
+                    help='Do you want the program to stop at a certain threshold? Ex: 100000 requests')
+parser.add_argument('--compare-directory', dest='compare_directory', type=str, default=None,
+                    help='Is there another folder you would like to get comparision images from? Default is Current_Directory/Images/')
+parser.add_argument('--start-at', dest='start_at', type=int, default=None,
+                    help='Need to start at the middle of a directory? Input the file number here. 5 = 5th Image')
 
-imgTarget = open('/Users/aszampias/Documents/HeadHunter/KnownPeople/amanda.jpeg', 'rb') 
-imgTargetName = os.path.basename(imgTarget.name)
-arDetectedFaces1 = face_client.face.detect_with_stream(imgTarget, detection_model='detection_03')
-imgTargetFaceID = arDetectedFaces1[0].face_id
-#print(imgTargetFaceID)
-print('{} face(s) detected from image {}.'.format(len(arDetectedFaces1), imgTargetName))
+args = parser.parse_args()
 
-imgPossible = open('/Users/aszampias/Documents/HeadHunter/example.jpeg', 'rb') 
-imgPossibleName = os.path.basename(imgPossible.name)
-arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model='detection_03')
-print('{} face(s) detected from image {}.'.format(len(arPossibleDetectedFaces), imgPossibleName))
+def setImageComparisionDirectory():
+  if (os.path.isdir(args.compare_directory)): 
+    return args.compare_directory
+  else:
+    print(colored('The directory provided does not exist: ' + args.compare_directory, 'yellow'))
+    exit()
 
+def getImageFilesFromDirectory():
+  arPossibleImages = [fn for fn in os.listdir(imageCompareDir) if fn.split(".")[-1] in accepted_extensions]
+  if (args.start_at != None):
+    print('Default Array: {}'.format(arPossibleImages))
+    arPossibleImages = arPossibleImages[args.start_at:len(arPossibleImages)]
+    print('Selected Array with start_at argument: {}'.format(arPossibleImages))
+    global intFileIndex
+    intFileIndex = args.start_at
+  return arPossibleImages
 
-for possibleDetectedFace in arPossibleDetectedFaces:
-  faceVerifyResults = face_client.face.verify_face_to_face(imgTargetFaceID, possibleDetectedFace.face_id)
-  #print(faceVerifyResults)
+def openTargetFile():
+    try: 
+        return open(args.target_file, 'rb') 
+    except:
+        print(colored('Cannot open the target image file: ' + args.target_file, 'yellow'))
+        exit()
+
+def checkMaxRequestLimit():
+    global intTotalRequests
+    intTotalRequests += 1
+    if (args.max_request_limit != None):
+        if (intTotalRequests > args.max_request_limit):
+          print(colored('Max Request Limit has been reached. Total Requests: ' + str(intTotalRequests), 'yellow'))
+          print(colored('Limit Set By User: ' + str(args.max_request_limit), 'yellow'))
+          exit()
+
+def incrementCounter():
+  checkMaxRequestLimit()
+  if (args.paid_version == False):
+    global intRequestCounter
+    intRequestCounter += 1
+    runSleepForMaxRequest()
+
+def runSleepForMaxRequest():
+    global intRequestCounter
+    if (intRequestCounter >= MAX_REQUEST_RATE_FREE):
+      print('MAX REQUEST RATE ACHIEVED. STALL {} SECONDS.'.format(REQUEST_TIMEOUT_TIME))
+      time.sleep(REQUEST_TIMEOUT_TIME)
+      intRequestCounter = 0
+
+def compareFaceToFace(possibleDetectedFace, imgPossibleName):
+  faceVerifyResults = face_client.face.verify_face_to_face(targetImageFaceID, possibleDetectedFace.face_id)
   if (faceVerifyResults.is_identical == True):
-    print('Faces from {} & {} are of the same person, with confidence: {}'.format(imgTargetName, imgPossibleName, faceVerifyResults.confidence))
+    print(colored('Faces from {} & {} are of the same person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'green'))
+    successFile.write('Faces from {} & {} are of the same person, with confidence: {}\n'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence))
   else: 
-    print('Faces from {} & {} are of a different person, with confidence: {}'.format(imgTargetName, imgPossibleName, faceVerifyResults.confidence))
+    print(colored('Faces from {} & {} are of a different person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'red'))
 
+def getPossibleDetectedFaces(imageName):
+  imgPossible = open(os.path.join(imageCompareDir, imageName), 'rb') 
+  arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model=args.detection_model)
+  print('{} face(s) detected from image {}.'.format(len(arPossibleDetectedFaces), imageName))
+  return arPossibleDetectedFaces
 
-# Base url for the Verify and Facelist/Large Facelist operations
-'''IMAGE_BASE_URL = 'https://csdx.blob.core.windows.net/resources/Face/Images/'
+def checkTargetImageForMultipleFaces(arDetectedFaces):
+    if (len(arDetectedFaces) > 1):
+      print(colored('The target image provided has more than 1 face. Please provide an image with only one face.', 'yellow'))
+      exit()
+    if (len(arDetectedFaces) < 1):
+      print(colored('Microsoft Azure found 0 faces in this image. Please provide an image with one face', 'yellow'))
+      exit()
 
-# Create a list to hold the target photos of the same person
-target_image_file_names = ['Family1-Dad1.jpg', 'Family1-Dad2.jpg']
-# The source photos contain this person
-source_image_file_name1 = 'Family1-Dad3.jpg'
-source_image_file_name2 = 'Family1-Son1.jpg'
+if (args.compare_directory != None):
+  imageCompareDir = setImageComparisionDirectory()
 
-# Detect face(s) from source image 1, returns a list[DetectedFaces]
-# We use detection model 3 to get better performance.
-detected_faces1 = face_client.face.detect_with_url(IMAGE_BASE_URL + source_image_file_name1, detection_model='detection_03')
-# Add the returned face's face ID
-source_image1_id = detected_faces1[0].face_id
-print('{} face(s) detected from image {}.'.format(len(detected_faces1), source_image_file_name1))
+targetImage = openTargetFile()
+targetImageName = os.path.basename(targetImage.name)
+arDetectedFaces = face_client.face.detect_with_stream(targetImage, detection_model=args.detection_model)
+checkTargetImageForMultipleFaces(arDetectedFaces)
+targetImageFaceID = arDetectedFaces[0].face_id
+print('{} face detected from target image {}.'.format(len(arDetectedFaces), targetImageName))
+incrementCounter()
 
-# Detect face(s) from source image 2, returns a list[DetectedFaces]
-detected_faces2 = face_client.face.detect_with_url(IMAGE_BASE_URL + source_image_file_name2, detection_model='detection_03')
-# Add the returned face's face ID
-source_image2_id = detected_faces2[0].face_id
-print('{} face(s) detected from image {}.'.format(len(detected_faces2), source_image_file_name2))
+try:
+  for imageName in getImageFilesFromDirectory():
+    arPossibleDetectedFaces = getPossibleDetectedFaces(imageName)
+    incrementCounter()
+    for possibleDetectedFace in arPossibleDetectedFaces:
+      compareFaceToFace(possibleDetectedFace, imageName)
+      incrementCounter()
+    intFileIndex += 1
+except KeyboardInterrupt:
+  print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
+  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+  successFile.close()
 
-# List for the target face IDs (uuids)
-detected_faces_ids = []
-# Detect faces from target image url list, returns a list[DetectedFaces]
-for image_file_name in target_image_file_names:
-    # We use detection model 3 to get better performance.
-    detected_faces = face_client.face.detect_with_url(IMAGE_BASE_URL + image_file_name, detection_model='detection_03')
-    # Add the returned face's face ID
-    detected_faces_ids.append(detected_faces[0].face_id)
-    print('{} face(s) detected from image {}.'.format(len(detected_faces), image_file_name))
-
-
-
-
-
-
-# Verification example for faces of the same person. The higher the confidence, the more identical the faces in the images are.
-# Since target faces are the same person, in this example, we can use the 1st ID in the detected_faces_ids list to compare.
-verify_result_same = face_client.face.verify_face_to_face(source_image1_id, detected_faces_ids[0])
-print('Faces from {} & {} are of the same person, with confidence: {}'
-    .format(source_image_file_name1, target_image_file_names[0], verify_result_same.confidence)
-    if verify_result_same.is_identical
-    else 'Faces from {} & {} are of a different person, with confidence: {}'
-        .format(source_image_file_name1, target_image_file_names[0], verify_result_same.confidence))
-
-# Verification example for faces of different persons.
-# Since target faces are same person, in this example, we can use the 1st ID in the detected_faces_ids list to compare.
-verify_result_diff = face_client.face.verify_face_to_face(source_image2_id, detected_faces_ids[0])
-print('Faces from {} & {} are of the same person, with confidence: {}'
-    .format(source_image_file_name2, target_image_file_names[0], verify_result_diff.confidence)
-    if verify_result_diff.is_identical
-    else 'Faces from {} & {} are of a different person, with confidence: {}'
-        .format(source_image_file_name2, target_image_file_names[0], verify_result_diff.confidence))
-'''
-
-'''face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-img = cv2.imread('foo.png')
-
-gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-faces = face_cascade.detectMultiScale(gray, 1.4, 5)
-counter = 0
-for (x, y, w, h) in faces:
-    cv2.rectangle(img, (x-30, y-30), (x+w+30, y+h+30), (255, 200, 0), 2)
-    cropped_image = img[y-30:y+h+30, x-30:x+w+30]
-    cv2.imshow("cropped", cropped_image)
-    imageTitle = "example_" + str(counter) + ".jpeg";
-    cv2.imwrite(imageTitle, cropped_image)
-    cv2.waitKey()
-    counter = counter + 1
-
-cv2.imshow('img', img)
-cv2.waitKey()'''
+successFile.close()
