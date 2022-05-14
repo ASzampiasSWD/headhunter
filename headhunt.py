@@ -6,13 +6,14 @@ from config import config
 from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
+from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException
 
 # Endpoint and Key located in config.py
 KEY = config["KEY"]
 ENDPOINT = config["ENDPOINT"]
 MAX_REQUEST_RATE_FREE = config["MAX_REQUEST_FREE_VERSION"]
 REQUEST_TIMEOUT_TIME = config["REQUEST_TIMEOUT_TIME"]
-accepted_extensions = ["jpg", "png", "jpeg", "bmp", "webp", "tiff", "tif"]
+accepted_extensions = ["jpg", "png", "jpeg", "bmp", "webp", "gif"]
 global intRequestCounter
 intRequestCounter = 0
 global intTotalRequests
@@ -30,6 +31,9 @@ parser.add_argument('target_file', type=str,
 parser.add_argument('--detection-model', dest='detection_model', type=str,
                     default='detection_03',
                     help='detection model for Microsoft Azure. Default is detection_03')
+parser.add_argument('--recognition-model', dest='recognition_model', type=str,
+                    default='recognition_04',
+                    help='recognition model for Microsoft Azure. Default is recognition_04')
 parser.add_argument('--paid', dest='paid_version', action="store_true",
                     help='You have the paid version of Azure. This will turn off the time.sleep required for free version. FAST.')
 parser.add_argument('--max', dest='max_request_limit', type=int,
@@ -52,10 +56,8 @@ def getImageFilesFromDirectory():
   arPossibleImages = [fn for fn in os.listdir(imageCompareDir) if fn.split(".")[-1] in accepted_extensions]
   if (args.start_at != None):
     print('Default Array: {}'.format(arPossibleImages))
-    arPossibleImages = arPossibleImages[args.start_at:len(arPossibleImages)]
+    arPossibleImages = arPossibleImages[intFileIndex:len(arPossibleImages)]
     print('Selected Array with start_at argument: {}'.format(arPossibleImages))
-    global intFileIndex
-    intFileIndex = args.start_at
   return arPossibleImages
 
 def openTargetFile():
@@ -98,7 +100,7 @@ def compareFaceToFace(possibleDetectedFace, imgPossibleName):
 
 def getPossibleDetectedFaces(imageName):
   imgPossible = open(os.path.join(imageCompareDir, imageName), 'rb') 
-  arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model=args.detection_model)
+  arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model=args.detection_model, recognition_model=args.recognition_model)
   print('{} face(s) detected from image {}.'.format(len(arPossibleDetectedFaces), imageName))
   return arPossibleDetectedFaces
 
@@ -113,25 +115,38 @@ def checkTargetImageForMultipleFaces(arDetectedFaces):
 if (args.compare_directory != None):
   imageCompareDir = setImageComparisionDirectory()
 
+if (args.start_at != None):
+  intFileIndex = args.start_at
+
 targetImage = openTargetFile()
 targetImageName = os.path.basename(targetImage.name)
-arDetectedFaces = face_client.face.detect_with_stream(targetImage, detection_model=args.detection_model)
+arDetectedFaces = face_client.face.detect_with_stream(targetImage, detection_model=args.detection_model, recognition_model=args.recognition_model)
 checkTargetImageForMultipleFaces(arDetectedFaces)
 targetImageFaceID = arDetectedFaces[0].face_id
 print('{} face detected from target image {}.'.format(len(arDetectedFaces), targetImageName))
 incrementCounter()
 
-try:
-  for imageName in getImageFilesFromDirectory():
-    arPossibleDetectedFaces = getPossibleDetectedFaces(imageName)
-    incrementCounter()
-    for possibleDetectedFace in arPossibleDetectedFaces:
-      compareFaceToFace(possibleDetectedFace, imageName)
+endLoop = False
+arImageFiles = getImageFilesFromDirectory()
+while (endLoop == False):
+  try:
+    for imageName in arImageFiles:
+      arPossibleDetectedFaces = getPossibleDetectedFaces(imageName)
       incrementCounter()
-    intFileIndex += 1
-except KeyboardInterrupt:
-  print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
-  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
-  successFile.close()
+      for possibleDetectedFace in arPossibleDetectedFaces:
+        compareFaceToFace(possibleDetectedFace, imageName)
+        incrementCounter()
+      intFileIndex += 1
+    endLoop=True
+  except KeyboardInterrupt:
+    print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
+    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+    successFile.close()
+  except APIErrorException as e:
+    print(e)
+    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+    print(colored('Pausing and Resuming in {} seconds...'.format(REQUEST_TIMEOUT_TIME), 'yellow'))
+    args.start_at = intFileIndex
+    time.sleep(REQUEST_TIMEOUT_TIME)  
 
 successFile.close()
