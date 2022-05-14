@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import os
 import time
+import re
 import argparse
 from config import config
 from termcolor import colored
@@ -54,10 +55,8 @@ def setImageComparisionDirectory():
 
 def getImageFilesFromDirectory():
   arPossibleImages = [fn for fn in os.listdir(imageCompareDir) if fn.split(".")[-1] in accepted_extensions]
-  if (args.start_at != None):
-    print('Default Array: {}'.format(arPossibleImages))
+  if (intFileIndex != 0):
     arPossibleImages = arPossibleImages[intFileIndex:len(arPossibleImages)]
-    print('Selected Array with start_at argument: {}'.format(arPossibleImages))
   return arPossibleImages
 
 def openTargetFile():
@@ -67,6 +66,12 @@ def openTargetFile():
         print(colored('Cannot open the target image file: ' + args.target_file, 'yellow'))
         exit()
 
+def calculateAPIErrorTimeout(errorMessage):
+  querySecond = re.search('after (.*) second', errorMessage)
+  if (querySecond != None):
+    return int(querySecond.group(1)) + 1
+  return 20
+  
 def checkMaxRequestLimit():
     global intTotalRequests
     intTotalRequests += 1
@@ -95,6 +100,7 @@ def compareFaceToFace(possibleDetectedFace, imgPossibleName):
   if (faceVerifyResults.is_identical == True):
     print(colored('Faces from {} & {} are of the same person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'green'))
     successFile.write('Faces from {} & {} are of the same person, with confidence: {}\n'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence))
+    successFile.flush()
   else: 
     print(colored('Faces from {} & {} are of a different person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'red'))
 
@@ -128,9 +134,10 @@ incrementCounter()
 
 endLoop = False
 arImageFiles = getImageFilesFromDirectory()
+print('Total Images in Processing: {}'.format(len(arImageFiles)))
 while (endLoop == False):
   try:
-    for imageName in arImageFiles:
+    for imageName in getImageFilesFromDirectory():
       arPossibleDetectedFaces = getPossibleDetectedFaces(imageName)
       incrementCounter()
       for possibleDetectedFace in arPossibleDetectedFaces:
@@ -138,15 +145,19 @@ while (endLoop == False):
         incrementCounter()
       intFileIndex += 1
     endLoop=True
+    print('{} Images Processed'.format(len(arImageFiles)))
+  except APIErrorException as errorMessage:
+    print(errorMessage.message)
+    intTimeToSleep = calculateAPIErrorTimeout(errorMessage.message)
+    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+    print(colored('Pausing and Resuming in {} seconds...'.format(intTimeToSleep), 'yellow'))
+    args.start_at = intFileIndex
+    time.sleep(intTimeToSleep)
+    intRequestCounter = 0
   except KeyboardInterrupt:
     print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
     print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
     successFile.close()
-  except APIErrorException as e:
-    print(e)
-    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
-    print(colored('Pausing and Resuming in {} seconds...'.format(REQUEST_TIMEOUT_TIME), 'yellow'))
-    args.start_at = intFileIndex
-    time.sleep(REQUEST_TIMEOUT_TIME)  
+    exit()
 
 successFile.close()
