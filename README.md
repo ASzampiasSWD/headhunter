@@ -16,6 +16,9 @@ chmod +x headhunt.py
 3. Obtain a Microsoft Azure FaceAPI Endpoint and Key. Place in config.py file. This can either be free or paid version. 
 Link: https://azure.microsoft.com/en-us/services/cognitive-services/face/
 
+
+ <img src="https://drive.google.com/uc?export=view&id=1pdLedj8QJP4_O7qCRdrQ90rQ7l2y5UN9" alt="Image to Endpoint and Key Directory" />
+
 ## Grimes Example
 I provided a Person Example using Grimes. 
 Example 1: Person-To-Face
