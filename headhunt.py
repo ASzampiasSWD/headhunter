@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+# Created By: Amanda Szampias
+# Description: Python Script uses Azure FaceAPI to detect and verify faces.
 import os
 import time
 import re
@@ -7,9 +9,8 @@ from config import config
 from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
-from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException, IdentifyCandidate, IdentifyResult
+from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException
 
-# Endpoint and Key located in config.py
 KEY = config["KEY"]
 ENDPOINT = config["ENDPOINT"]
 MAX_REQUEST_RATE_FREE = config["MAX_REQUEST_FREE_VERSION"]
@@ -22,6 +23,7 @@ intTotalRequests = 0
 global intFileIndex
 intFileIndex = 0
 imageCompareDir = os.path.join(os.getcwd(), 'Images')
+endLoop = False
 
 successFile = open('success.txt','a')
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
@@ -39,7 +41,7 @@ parser.add_argument('--paid', dest='paid_version', action="store_true",
                     help='You have the paid version of Azure. This will turn off the time.sleep required for free version. FAST.')
 parser.add_argument('--max', dest='max_request_limit', type=int,
                     help='Do you want the program to stop at a certain threshold? Ex: 100000 requests')
-parser.add_argument('--compare-directory', dest='compare_directory', type=str, default=None,
+parser.add_argument('-c', '--compare-directory', dest='compare_directory', type=str, default=None,
                     help='Is there another folder you would like to get comparision images from? Default is Current_Directory/Images/')
 parser.add_argument('--start-at', dest='start_at', type=int, default=None,
                     help='Need to start at the middle of a directory? Input the file number here. 5 = 5th Image')
@@ -50,8 +52,7 @@ def setImageComparisionDirectory():
   if (os.path.isdir(args.compare_directory)): 
     return args.compare_directory
   else:
-    print(colored('The directory provided does not exist: ' + args.compare_directory, 'yellow'))
-    exit()
+    exit(colored('The directory provided does not exist: ' + args.compare_directory, 'yellow'))
 
 def getImageFilesFromDirectory():
   arPossibleImages = [fn for fn in os.listdir(imageCompareDir) if fn.split(".")[-1] in accepted_extensions]
@@ -63,8 +64,7 @@ def openTargetFile():
   try: 
     return open(args.target_resource, 'rb') 
   except:
-    print(colored('Cannot open the target image file: ' + args.target_resource, 'yellow'))
-    exit()
+    exit(colored('Cannot open the target image file: ' + args.target_resource, 'yellow'))
 
 def calculateAPIErrorTimeout(errorMessage):
   querySecond = re.search('after (.*) second', errorMessage)
@@ -78,8 +78,7 @@ def checkMaxRequestLimit():
     if (args.max_request_limit != None):
         if (intTotalRequests > args.max_request_limit):
           print(colored('Max Request Limit has been reached. Total Requests: ' + str(intTotalRequests), 'yellow'))
-          print(colored('Limit Set By User: ' + str(args.max_request_limit), 'yellow'))
-          exit()
+          exit(colored('Limit Set By User: ' + str(args.max_request_limit), 'yellow'))
 
 def incrementCounter():
   checkMaxRequestLimit()
@@ -114,7 +113,7 @@ def comparePersonGroupToFace(possibleDetectedFace, imgPossibleName):
       successFile.write('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence))
       successFile.flush()
     else:
-      print(colored('No person identified for face ID {} in {}.'.format(person.face_id, os.path.basename(imgPossibleName)), 'red'))
+      print(colored('No person identified in {}.'.format(imgPossibleName), 'red'))
 
 def getPossibleDetectedFaces(imageName):
   imgPossible = open(os.path.join(imageCompareDir, imageName), 'rb') 
@@ -124,11 +123,9 @@ def getPossibleDetectedFaces(imageName):
 
 def checkTargetImageForMultipleFaces(arDetectedFaces):
     if (len(arDetectedFaces) > 1):
-      print(colored('The target image provided has more than 1 face. Please provide an image with only one face.', 'yellow'))
-      exit()
+      exit(colored('The target image provided has more than 1 face. Please provide an image with only one face.', 'yellow'))
     if (len(arDetectedFaces) < 1):
-      print(colored('Microsoft Azure found 0 faces in this image. Please provide an image with one face', 'yellow'))
-      exit()
+      exit(colored('Microsoft Azure found 0 faces in this image. Please provide an image with one face', 'yellow'))
 
 def getTargetImageFaceId():
   targetImage = openTargetFile()
@@ -141,10 +138,9 @@ def getTargetImageFaceId():
   return targetImageFaceID, targetImageName
 
 def getKeyboardInterruptAction():
-  print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
-  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
   successFile.close()
-  exit()
+  print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
+  exit(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
 
 def getAPIExceptionAction(errorMessage):
   print(errorMessage.message)
@@ -154,15 +150,19 @@ def getAPIExceptionAction(errorMessage):
   args.start_at = intFileIndex
   time.sleep(intTimeToSleep)
 
-if (args.compare_directory != None):
-  imageCompareDir = setImageComparisionDirectory()
+def checkArgs():
+  if (args.compare_directory != None):
+    global imageCompareDir
+    imageCompareDir = setImageComparisionDirectory()
 
-if (args.start_at != None):
-  intFileIndex = args.start_at
+  if (args.start_at != None):
+    global intFileIndex
+    intFileIndex = args.start_at
 
+checkArgs()
 if ('.' in args.target_resource):
   targetImageFaceID, targetImageName = getTargetImageFaceId()
-endLoop = False
+
 arImageFiles = getImageFilesFromDirectory()
 print('Total Images in Processing: {}'.format(len(arImageFiles)))
 while (endLoop == False):

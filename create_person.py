@@ -1,8 +1,10 @@
 #!/usr/bin/python3
+# Created By: Amanda Szampias
+# Description: Script creates one person object for Microsoft Azure FaceAPI
 import os
 import argparse
 import time
-import sys
+import re
 from config import config
 from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
@@ -11,14 +13,16 @@ from azure.cognitiveservices.vision.face.models import TrainingStatusType, Perso
 from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException
 from msrest.exceptions import ValidationError
 
-
-# Endpoint and Key located in config.py
 KEY = config["KEY"]
 ENDPOINT = config["ENDPOINT"]
+MAX_REQUEST_RATE_FREE = config["MAX_REQUEST_FREE_VERSION"]
+REQUEST_TIMEOUT_TIME = config["REQUEST_TIMEOUT_TIME"]
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
 accepted_extensions = ["jpg", "png", "jpeg", "bmp", "webp", "gif"]
 global intFileIndex
 intFileIndex = 0
+global intRequestCounter
+intRequestCounter = 0
 
 parser = argparse.ArgumentParser(description='Find face matches from one image.')
 parser.add_argument('target_path', type=str,
@@ -49,21 +53,48 @@ def getImageFilesFromDirectory():
 def createPersonGroup():
   try:
     face_client.person_group.create(person_group_id=PERSON_GROUP_ID, name=PERSON_GROUP_ID, recognition_model=args.recognition_model)
+    print(colored('PersonGroup Created.', 'green'))
   except ValidationError as validationError:
-      print(colored('Error for PersonGroup Name Field: {}'.format(validationError), 'red'))
-      exit()
+      exit(colored('Error for PersonGroup Name Field: {}'.format(validationError), 'red'))
   except APIErrorException as apiError:
-      print(colored(apiError.message + ' Use the -d delete option to delete existing PersonGroup and create new one.', 'red'))
-      exit()
+      exit(colored(apiError.message + ' Use the -d delete option to delete existing PersonGroup and create new one.', 'red'))
 
 def deletePersonGroup():
   try:
     face_client.person_group.delete(PERSON_GROUP_ID)
   except ValidationError as validationError:
-      print(colored('Error for PersonGroup Name Field: {}'.format(validationError), 'red'))
-      exit()
+      exit(colored('Error for PersonGroup Name Field: {}'.format(validationError), 'red'))
 
-PERSON_GROUP_ID = args.name #tornado_project
+def incrementCounter():
+  if (args.paid_version == False):
+    global intRequestCounter
+    intRequestCounter += 1
+    global intFileIndex
+    intFileIndex += 1
+    runSleepForMaxRequest()
+
+def runSleepForMaxRequest():
+    global intRequestCounter
+    if (intRequestCounter >= MAX_REQUEST_RATE_FREE):
+      print('MAX REQUEST RATE ACHIEVED. STALL {} SECONDS.'.format(REQUEST_TIMEOUT_TIME))
+      time.sleep(REQUEST_TIMEOUT_TIME)
+      intRequestCounter = 0
+
+
+def calculateAPIErrorTimeout(errorMessage):
+  querySecond = re.search('after (.*) second', errorMessage)
+  if (querySecond != None):
+    return int(querySecond.group(1)) + 1
+  return 20
+
+def getAPIExceptionAction(errorMessage):
+  print(errorMessage.message)
+  intTimeToSleep = calculateAPIErrorTimeout(errorMessage.message)
+  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+  print(colored('Pausing and Resuming in {} seconds...'.format(intTimeToSleep), 'yellow'))
+  time.sleep(intTimeToSleep)
+
+PERSON_GROUP_ID = args.name
 print('Person group:', PERSON_GROUP_ID)
 
 if (args.is_delete):
@@ -72,29 +103,29 @@ if (args.is_delete):
 createPersonGroup()
 person = face_client.person_group_person.create(PERSON_GROUP_ID, args.person_name, args.person_name)
 
-
-for image in getImageFilesFromDirectory():
-    ch = open(os.path.join(args.target_path, image), 'r+b')
-    sufficientQuality = True
-    detected_faces = face_client.face.detect_with_stream(ch, detection_model=args.detection_model, recognition_model=args.recognition_model, return_face_attributes=['qualityForRecognition'])
-    '''for face in detected_faces:
-        if face.face_attributes.quality_for_recognition != QualityForRecognition.medium:
-            sufficientQuality = False
-            print('quality not good')
-            break
-    if not sufficientQuality: continue'''
-    face_client.person_group_person.add_face_from_stream(PERSON_GROUP_ID, person.person_id, open(os.path.join(args.target_path, image), 'r+b'), detection_model=args.detection_model)
+endLoop = False
+while (endLoop == False):
+  try:
+    for imageName in getImageFilesFromDirectory():
+      imagePerson = open(os.path.join(args.target_path, imageName), 'r+b')
+      sufficientQuality = True
+      detected_faces = face_client.face.detect_with_stream(imagePerson, detection_model=args.detection_model, recognition_model=args.recognition_model, return_face_attributes=['qualityForRecognition'])
+      face_client.person_group_person.add_face_from_stream(PERSON_GROUP_ID, person.person_id, open(os.path.join(args.target_path, imageName), 'r+b'), detection_model=args.detection_model)
+      print('Image {} added to Person Object: {}'.format(imageName, args.person_name))
+      incrementCounter()
+    endLoop = True
+  except APIErrorException as errorMessage:
+      getAPIExceptionAction(errorMessage)
 
 print('Training the PersonGroup...')
 face_client.person_group.train(PERSON_GROUP_ID)
 while (True):
     training_status = face_client.person_group.get_training_status(PERSON_GROUP_ID)
-    print("Training status: {}.".format(training_status.status))
-    print()
+    print("Training Status: {}".format(training_status.status))
     if (training_status.status is TrainingStatusType.succeeded):
         print(colored('Training Succeeded!!', 'green'))
         break
     elif (training_status.status is TrainingStatusType.failed):
         face_client.person_group.delete(person_group_id=PERSON_GROUP_ID)
-        sys.exit(colored('Training the Person Group has failed.', 'red'))
+        exit(colored('Training the PersonGroup has failed.', 'red'))
     time.sleep(5)
