@@ -7,7 +7,7 @@ from config import config
 from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
-from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException
+from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException, IdentifyCandidate, IdentifyResult
 
 # Endpoint and Key located in config.py
 KEY = config["KEY"]
@@ -27,8 +27,8 @@ successFile = open('success.txt','a')
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
 
 parser = argparse.ArgumentParser(description='Find face matches from one image.')
-parser.add_argument('target_file', type=str,
-                    help='path of the image you want found')
+parser.add_argument('target_resource', type=str,
+                    help='path of the image you want found OR provide person_group_id')
 parser.add_argument('--detection-model', dest='detection_model', type=str,
                     default='detection_03',
                     help='detection model for Microsoft Azure. Default is detection_03')
@@ -60,11 +60,11 @@ def getImageFilesFromDirectory():
   return arPossibleImages
 
 def openTargetFile():
-    try: 
-        return open(args.target_file, 'rb') 
-    except:
-        print(colored('Cannot open the target image file: ' + args.target_file, 'yellow'))
-        exit()
+  try: 
+    return open(args.target_resource, 'rb') 
+  except:
+    print(colored('Cannot open the target image file: ' + args.target_resource, 'yellow'))
+    exit()
 
 def calculateAPIErrorTimeout(errorMessage):
   querySecond = re.search('after (.*) second', errorMessage)
@@ -104,6 +104,18 @@ def compareFaceToFace(possibleDetectedFace, imgPossibleName):
   else: 
     print(colored('Faces from {} & {} are of a different person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'red'))
 
+def comparePersonGroupToFace(possibleDetectedFace, imgPossibleName):
+  arPersonResults = face_client.face.identify([possibleDetectedFace.face_id], args.target_resource)
+  if not arPersonResults:
+    print(colored('No person identified in the person group for faces from {}.'.format(imgPossibleName), 'red'))
+  for person in arPersonResults:
+    if len(person.candidates) > 0:
+      print(colored('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence), 'green'))
+      successFile.write('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence))
+      successFile.flush()
+    else:
+      print(colored('No person identified for face ID {} in {}.'.format(person.face_id, os.path.basename(imgPossibleName)), 'red'))
+
 def getPossibleDetectedFaces(imageName):
   imgPossible = open(os.path.join(imageCompareDir, imageName), 'rb') 
   arPossibleDetectedFaces = face_client.face.detect_with_stream(imgPossible, detection_model=args.detection_model, recognition_model=args.recognition_model)
@@ -118,20 +130,38 @@ def checkTargetImageForMultipleFaces(arDetectedFaces):
       print(colored('Microsoft Azure found 0 faces in this image. Please provide an image with one face', 'yellow'))
       exit()
 
+def getTargetImageFaceId():
+  targetImage = openTargetFile()
+  targetImageName = os.path.basename(targetImage.name)
+  arDetectedFaces = face_client.face.detect_with_stream(targetImage, detection_model=args.detection_model, recognition_model=args.recognition_model)
+  checkTargetImageForMultipleFaces(arDetectedFaces)
+  targetImageFaceID = arDetectedFaces[0].face_id
+  print('{} face detected from target image {}.'.format(len(arDetectedFaces), targetImageName))
+  incrementCounter()
+  return targetImageFaceID, targetImageName
+
+def getKeyboardInterruptAction():
+  print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
+  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+  successFile.close()
+  exit()
+
+def getAPIExceptionAction(errorMessage):
+  print(errorMessage.message)
+  intTimeToSleep = calculateAPIErrorTimeout(errorMessage.message)
+  print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
+  print(colored('Pausing and Resuming in {} seconds...'.format(intTimeToSleep), 'yellow'))
+  args.start_at = intFileIndex
+  time.sleep(intTimeToSleep)
+
 if (args.compare_directory != None):
   imageCompareDir = setImageComparisionDirectory()
 
 if (args.start_at != None):
   intFileIndex = args.start_at
 
-targetImage = openTargetFile()
-targetImageName = os.path.basename(targetImage.name)
-arDetectedFaces = face_client.face.detect_with_stream(targetImage, detection_model=args.detection_model, recognition_model=args.recognition_model)
-checkTargetImageForMultipleFaces(arDetectedFaces)
-targetImageFaceID = arDetectedFaces[0].face_id
-print('{} face detected from target image {}.'.format(len(arDetectedFaces), targetImageName))
-incrementCounter()
-
+if ('.' in args.target_resource):
+  targetImageFaceID, targetImageName = getTargetImageFaceId()
 endLoop = False
 arImageFiles = getImageFilesFromDirectory()
 print('Total Images in Processing: {}'.format(len(arImageFiles)))
@@ -141,23 +171,18 @@ while (endLoop == False):
       arPossibleDetectedFaces = getPossibleDetectedFaces(imageName)
       incrementCounter()
       for possibleDetectedFace in arPossibleDetectedFaces:
-        compareFaceToFace(possibleDetectedFace, imageName)
+        if ('.' in args.target_resource):
+          compareFaceToFace(possibleDetectedFace, imageName)
+        else:
+          comparePersonGroupToFace(possibleDetectedFace, imageName)
         incrementCounter()
       intFileIndex += 1
     endLoop=True
     print('{} Images Processed'.format(len(arImageFiles)))
   except APIErrorException as errorMessage:
-    print(errorMessage.message)
-    intTimeToSleep = calculateAPIErrorTimeout(errorMessage.message)
-    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
-    print(colored('Pausing and Resuming in {} seconds...'.format(intTimeToSleep), 'yellow'))
-    args.start_at = intFileIndex
-    time.sleep(intTimeToSleep)
+    getAPIExceptionAction(errorMessage)
     intRequestCounter = 0
   except KeyboardInterrupt:
-    print(colored('\nUser Exited Program. Total API Requests Made: {}'.format(intTotalRequests), 'yellow'))
-    print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
-    successFile.close()
-    exit()
+    getKeyboardInterruptAction()
 
 successFile.close()
