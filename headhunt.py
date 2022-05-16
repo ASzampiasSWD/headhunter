@@ -22,6 +22,8 @@ global intTotalRequests
 intTotalRequests = 0
 global intFileIndex
 intFileIndex = 0
+global intSuccessMatches
+intSuccessMatches = 0
 imageCompareDir = os.path.join(os.getcwd(), 'Images')
 endLoop = False
 
@@ -98,6 +100,8 @@ def compareFaceToFace(possibleDetectedFace, imgPossibleName):
   faceVerifyResults = face_client.face.verify_face_to_face(targetImageFaceID, possibleDetectedFace.face_id)
   if (faceVerifyResults.is_identical == True):
     print(colored('Faces from {} & {} are of the same person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'green'))
+    global intSuccessMatches
+    intSuccessMatches += 1
     successFile.write('Faces from {} & {} are of the same person, with confidence: {}\n'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence))
     successFile.flush()
   else: 
@@ -110,6 +114,8 @@ def comparePersonGroupToFace(possibleDetectedFace, imgPossibleName):
   for person in arPersonResults:
     if len(person.candidates) > 0:
       print(colored('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence), 'green'))
+      global intSuccessMatches
+      intSuccessMatches += 1
       successFile.write('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence))
       successFile.flush()
     else:
@@ -179,6 +185,7 @@ while (endLoop == False):
       intFileIndex += 1
     endLoop=True
     print('{} Images Processed'.format(len(arImageFiles)))
+    print('{} Total Faces Matched'.format(intSuccessMatches))
   except APIErrorException as errorMessage:
     getAPIExceptionAction(errorMessage)
     intRequestCounter = 0
