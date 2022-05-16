@@ -29,8 +29,6 @@ parser.add_argument('target_path', type=str,
                     help='path of the image you want to use as a person')
 parser.add_argument('--name', type=str, required=True,
                     help='name of the PersonGroup')
-parser.add_argument('--person-name', dest='person_name', type=str, required=True,
-                    help='name of the Person')
 parser.add_argument('--detection-model', dest='detection_model', type=str,
                     default='detection_03',
                     help='detection model for Microsoft Azure. Default is detection_03')
@@ -101,7 +99,7 @@ if (args.is_delete):
   deletePersonGroup()
 
 createPersonGroup()
-person = face_client.person_group_person.create(PERSON_GROUP_ID, args.person_name, args.person_name)
+person = face_client.person_group_person.create(PERSON_GROUP_ID, PERSON_GROUP_ID, PERSON_GROUP_ID)
 
 endLoop = False
 while (endLoop == False):
@@ -111,7 +109,7 @@ while (endLoop == False):
       sufficientQuality = True
       detected_faces = face_client.face.detect_with_stream(imagePerson, detection_model=args.detection_model, recognition_model=args.recognition_model, return_face_attributes=['qualityForRecognition'])
       face_client.person_group_person.add_face_from_stream(PERSON_GROUP_ID, person.person_id, open(os.path.join(args.target_path, imageName), 'r+b'), detection_model=args.detection_model)
-      print('Image {} added to Person Object: {}'.format(imageName, args.person_name))
+      print('Image {} added to Person Object: {}'.format(imageName, PERSON_GROUP_ID))
       incrementCounter()
     endLoop = True
   except APIErrorException as errorMessage:

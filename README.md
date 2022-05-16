@@ -23,7 +23,7 @@ I provided a Person Example using the singer-celebrity Grimes.
 ### Example 1: Person-To-Face
 Description: Create a Person object using example images of Grimes in the KnownPerson/ directory. I provided three photos of Grimes. 
 <pre>
-./create_person.py KnownPeople/ --name grimes --person-name grimes
+./create_person.py KnownPerson/ --name grimes
 ./headhunt.py grimes 
 </pre>
 
