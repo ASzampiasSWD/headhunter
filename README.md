@@ -34,7 +34,3 @@ Description: Create a Person object using example images of Grimes in the KnownP
 
 ## Operating Systems
 This script is supported on Windows, Linux, and MacOS.
-
-## How-to Video
-[![How To Video](https://img.youtube.com/vi/IEl-kBQvutU/0.jpg)](https://www.youtube.com/watch?v=IEl-kBQvutU)
-
