@@ -72,7 +72,7 @@ def calculateAPIErrorTimeout(errorMessage):
   querySecond = re.search('after (.*) second', errorMessage)
   if (querySecond != None):
     return int(querySecond.group(1)) + 1
-  return 20
+  return 1
   
 def checkMaxRequestLimit():
     global intTotalRequests
@@ -150,6 +150,9 @@ def getKeyboardInterruptAction():
 
 def getAPIExceptionAction(errorMessage):
   print(errorMessage.message)
+  if (errorMessage.message == '(InvalidImage) Resizing image failed, image format not supported.'):
+    global intFileIndex
+    intFileIndex += 1
   intTimeToSleep = calculateAPIErrorTimeout(errorMessage.message)
   print(colored('File Index is at: {}'.format(intFileIndex), 'yellow'))
   print(colored('Pausing and Resuming in {} seconds...'.format(intTimeToSleep), 'yellow'))
