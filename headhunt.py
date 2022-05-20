@@ -5,8 +5,11 @@ import os
 import time
 import re
 import argparse
+import colorama
+import shutil
 from config import config
 from termcolor import colored
+from pathlib import Path
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
 from azure.cognitiveservices.vision.face.models._models_py3 import APIErrorException
@@ -25,9 +28,11 @@ intFileIndex = 0
 global intSuccessMatches
 intSuccessMatches = 0
 imageCompareDir = os.path.join(os.getcwd(), 'Images')
+global dirFoundImages
+dirFoundImages = './Found_Images'
 endLoop = False
 
-successFile = open('success.txt','a')
+colorama.init()
 face_client = FaceClient(ENDPOINT, CognitiveServicesCredentials(KEY))
 
 parser = argparse.ArgumentParser(description='Find face matches from one image.')
@@ -45,10 +50,14 @@ parser.add_argument('--max', dest='max_request_limit', type=int,
                     help='Do you want the program to stop at a certain threshold? Ex: 100000 requests')
 parser.add_argument('-c', '--compare-directory', dest='compare_directory', type=str, default=None,
                     help='Is there another folder you would like to get comparision images from? Default is Current_Directory/Images/')
-parser.add_argument('--start-at', dest='start_at', type=int, default=None,
+parser.add_argument('-o', '--output-file', dest='output_file_name', type=str, default='success.txt',
+                    help='Name of the output file. Default is success.txt')
+parser.add_argument('-s', '--start-at', dest='start_at', type=int, default=None,
                     help='Need to start at the middle of a directory? Input the file number here. 5 = 5th Image')
 
 args = parser.parse_args()
+successFile = open(args.output_file_name,'a')
+Path(dirFoundImages).mkdir(parents=True, exist_ok=True)
 
 def setImageComparisionDirectory():
   if (os.path.isdir(args.compare_directory)): 
@@ -104,6 +113,7 @@ def compareFaceToFace(possibleDetectedFace, imgPossibleName):
     intSuccessMatches += 1
     successFile.write('Faces from {} & {} are of the same person, with confidence: {}\n'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence))
     successFile.flush()
+    shutil.copyfile(os.path.join(imageCompareDir, imgPossibleName), os.path.join(dirFoundImages, imgPossibleName))
   else: 
     print(colored('Faces from {} & {} are of a different person, with confidence: {}'.format(targetImageName, imgPossibleName, faceVerifyResults.confidence), 'red'))
 
@@ -118,6 +128,7 @@ def comparePersonGroupToFace(possibleDetectedFace, imgPossibleName):
       intSuccessMatches += 1
       successFile.write('Person for face ID {} is identified in {} with a confidence of {}.\n'.format(person.face_id, imgPossibleName, person.candidates[0].confidence))
       successFile.flush()
+      shutil.copyfile(os.path.join(imageCompareDir, imgPossibleName), os.path.join(dirFoundImages, imgPossibleName))
     else:
       print(colored('No person identified in {}.'.format(imgPossibleName), 'red'))
 

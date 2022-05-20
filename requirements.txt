@@ -2,3 +2,4 @@ azure-cognitiveservices-vision-face==0.6.0
 azure-common==1.1.28
 msrest==0.6.21
 termcolor==1.1.0
+colorama==0.4.4
