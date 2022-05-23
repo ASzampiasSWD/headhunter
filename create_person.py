@@ -5,6 +5,7 @@ import os
 import argparse
 import time
 import re
+import colorama
 from config import config
 from termcolor import colored
 from azure.cognitiveservices.vision.face import FaceClient
@@ -23,6 +24,7 @@ global intFileIndex
 intFileIndex = 0
 global intRequestCounter
 intRequestCounter = 0
+colorama.init()
 
 parser = argparse.ArgumentParser(description='Find face matches from one image.')
 parser.add_argument('target_path', type=str,
