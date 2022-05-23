@@ -1,5 +1,5 @@
 # headhunter
-This python script uses Microsoft Azure FaceAPI for Person-To-Face and Face-To-Face comparision. 
+Find people in face masks, sunglasses, low quality images, hats, and different hair styles using Microsoft Azure FaceAPI. HeadHunter takes an image (or sets of images) and identifies the same face in other photos. Options include People-To-Face, Person-To-Face, and Face-To-Face.
 
 ## Steps
 1. Install the python libraries using pip3:
@@ -18,18 +18,25 @@ Link: https://azure.microsoft.com/en-us/services/cognitive-services/face/
 
 <img src="https://i.imgur.com/YDRUT2u.png" width="50%" height="50%" border="1" />
 
-## Grimes Example
-I provided a Person Example using the singer-celebrity Grimes. 
+## Examples
+I provided Face, Person, and People Examples using the singer-celebrity Grimes and Spaceman Elon. 
 ### Example 1: Person-To-Face
-Description: Create a Person object using example images of Grimes in the KnownPerson/ directory. I provided three photos of Grimes. 
+Description: Create a Person object using example images of Grimes in the KnownPeople/Grimes directory. I provided three photos of Grimes. 
 <pre>
-./create_person.py KnownPerson/ --name grimes
+./create_person.py KnownPeople/Grimes --name grimes
 ./headhunt.py grimes 
 </pre>
 
 ### Example 2: Face-To-Face
 <pre>
-./headhunt.py ./KnownPerson/Grimes1.webp --compare-dir ./Images
+./headhunt.py ./KnownPeople/Grimes/Grimes1.webp --compare-dir ./Images
+</pre>
+
+### Example 3: People-To-Face
+Description: Create multiple Person objects using example images of Grimes and Elon in the KnownPeople/ directory. I provided three photos of each person. Change the config_people.txt file with name:{directory path to image folder}. Create a newline for each Person. Be mindful the names are lowercase and match regex requirements.
+<pre>
+ ./create_people.py --name star
+ ./headhunt.py star
 </pre>
 
 ## Operating Systems
