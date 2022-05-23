@@ -123,10 +123,11 @@ def comparePersonGroupToFace(possibleDetectedFace, imgPossibleName):
     print(colored('No person identified in the person group for faces from {}.'.format(imgPossibleName), 'red'))
   for person in arPersonResults:
     if len(person.candidates) > 0:
-      print(colored('Person for face ID {} is identified in {} with a confidence of {}.'.format(person.face_id, imgPossibleName, person.candidates[0].confidence), 'green'))
+      personName = face_client.person_group_person.get(args.target_resource, person.candidates[0].person_id).name
+      print(colored('Person {} is identified in {} with a confidence of {}.'.format(personName, imgPossibleName, person.candidates[0].confidence), 'green'))
       global intSuccessMatches
       intSuccessMatches += 1
-      successFile.write('Person for face ID {} is identified in {} with a confidence of {}.\n'.format(person.face_id, imgPossibleName, person.candidates[0].confidence))
+      successFile.write('Person {} is identified in {} with a confidence of {}.\n'.format(personName, imgPossibleName, person.candidates[0].confidence))
       successFile.flush()
       shutil.copyfile(os.path.join(imageCompareDir, imgPossibleName), os.path.join(dirFoundImages, imgPossibleName))
     else:
